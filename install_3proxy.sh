@@ -223,6 +223,8 @@ configure_firewall() {
     
     if command -v ufw > /dev/null; then
         sudo ufw allow 1080/tcp
+        sudo ufw allow 22/tcp
+        sudo ufw allow ssh
         log_success "UFW防火墙已配置"
     elif command -v firewall-cmd > /dev/null; then
         sudo firewall-cmd --permanent --add-port=1080/tcp
