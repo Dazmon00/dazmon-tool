@@ -6,6 +6,9 @@
 
 set -e  # 遇到错误立即退出
 
+# 生成随机端口 (10000-60000)
+RANDOM_PORT=$((RANDOM % 50001 + 10000))
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -76,7 +79,7 @@ check_dependencies() {
 
 # 检查端口占用
 check_port() {
-    local port=1080
+    local port=$RANDOM_PORT
     log_info "检查端口 $port 是否被占用..."
     
     if sudo netstat -tuln | grep ":$port " > /dev/null; then
@@ -158,7 +161,7 @@ logformat "- +_L%t.%. %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 auth strong
 users proxyuser:CL:${user1_pass} testuser:CL:${user2_pass}
 allow proxyuser,testuser
-socks -p1080
+socks -p${RANDOM_PORT}
 EOF
     
     # 创建日志文件
@@ -222,19 +225,43 @@ configure_firewall() {
     log_info "配置防火墙..."
     
     if command -v ufw > /dev/null; then
-        sudo ufw allow 1080/tcp
-        sudo ufw allow 22/tcp
-        sudo ufw allow ssh
-        log_success "UFW防火墙已配置"
+        # 确保22端口已开放（SSH登录必需）
+        sudo ufw allow 22/tcp > /dev/null 2>&1 || true
+        sudo ufw allow ssh > /dev/null 2>&1 || true
+        # 开放随机端口
+        if sudo ufw allow ${RANDOM_PORT}/tcp; then
+            log_success "UFW防火墙已配置，已开放端口: 22, ${RANDOM_PORT}"
+        else
+            log_warning "UFW配置可能失败，请检查"
+        fi
     elif command -v firewall-cmd > /dev/null; then
-        sudo firewall-cmd --permanent --add-port=1080/tcp
-        sudo firewall-cmd --reload
-        log_success "FirewallD已配置"
+        # 确保22端口已开放（SSH登录必需）
+        sudo firewall-cmd --permanent --add-port=22/tcp > /dev/null 2>&1 || true
+        # 开放随机端口
+        if sudo firewall-cmd --permanent --add-port=${RANDOM_PORT}/tcp && sudo firewall-cmd --reload; then
+            log_success "FirewallD已配置，已开放端口: 22, ${RANDOM_PORT}"
+        else
+            log_warning "FirewallD配置可能失败，请检查"
+        fi
     elif command -v iptables > /dev/null; then
-        sudo iptables -A INPUT -p tcp --dport 1080 -j ACCEPT
-        log_success "iptables已配置"
+        # 确保22端口已开放（SSH登录必需）
+        if ! sudo iptables -C INPUT -p tcp --dport 22 -j ACCEPT > /dev/null 2>&1; then
+            sudo iptables -I INPUT -p tcp --dport 22 -j ACCEPT
+        fi
+        # 开放随机端口
+        if sudo iptables -A INPUT -p tcp --dport ${RANDOM_PORT} -j ACCEPT; then
+            # 尝试保存iptables规则
+            if command -v netfilter-persistent > /dev/null; then
+                sudo netfilter-persistent save > /dev/null 2>&1 || true
+            elif [ -f /etc/redhat-release ] && command -v service > /dev/null; then
+                sudo service iptables save > /dev/null 2>&1 || true
+            fi
+            log_success "iptables已配置，已开放端口: 22, ${RANDOM_PORT}"
+        else
+            log_warning "iptables配置可能失败，请检查"
+        fi
     else
-        log_warning "未找到支持的防火墙工具，请手动开放1080端口"
+        log_warning "未找到支持的防火墙工具，请手动开放端口: 22, ${RANDOM_PORT}"
     fi
 }
 
@@ -268,15 +295,15 @@ verify_installation() {
     fi
     
     # 检查端口监听
-    if ! sudo netstat -tlnp | grep ":1080 " > /dev/null; then
-        log_error "端口1080未监听"
+    if ! sudo netstat -tlnp | grep ":${RANDOM_PORT} " > /dev/null; then
+        log_error "端口${RANDOM_PORT}未监听"
         return 1
     fi
     
     # 测试本地连接
     local user1_pass=$(sudo grep "proxyuser" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
     
-    if curl --socks5 "proxyuser:${user1_pass}@127.0.0.1:1080" -s -o /dev/null -w "%{http_code}" http://httpbin.org/ip | grep -q "200"; then
+    if curl --socks5 "proxyuser:${user1_pass}@127.0.0.1:${RANDOM_PORT}" -s -o /dev/null -w "%{http_code}" http://httpbin.org/ip | grep -q "200"; then
         log_success "本地连接测试成功"
     else
         log_warning "本地连接测试失败，但服务已启动"
@@ -291,7 +318,7 @@ verify_installation() {
     echo "服务器信息："
     echo "----------------------------------------"
     echo "服务器IP: $public_ip"
-    echo "端口: 1080"
+    echo "端口: $RANDOM_PORT"
     echo "协议: SOCKS5"
     echo "认证: 用户名/密码"
     echo "----------------------------------------"
@@ -301,7 +328,9 @@ verify_installation() {
     echo "sudo systemctl restart 3proxy   # 重启服务"
     echo "sudo tail -f /var/log/3proxy.log # 查看日志"
     echo
-    log_warning "⚠️  请确保云服务商安全组已开放1080端口！"
+    log_warning "⚠️  请确保云服务商安全组已开放${RANDOM_PORT}端口！"
+    echo
+    log_success "随机端口: $RANDOM_PORT"
 }
 
 # 主函数
