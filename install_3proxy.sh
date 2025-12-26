@@ -13,6 +13,10 @@ RANDOM_PORT=$((RANDOM % 50001 + 10000))
 RANDOM_USER1=$(openssl rand -base64 8 | tr -d '=+/' | head -c 10)
 RANDOM_USER2=$(openssl rand -base64 8 | tr -d '=+/' | head -c 10)
 
+# 生成随机密码（全局变量，供后续使用）
+RANDOM_PASS1=$(openssl rand -base64 12 | tr -d '=+/')
+RANDOM_PASS2=$(openssl rand -base64 12 | tr -d '=+/')
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -149,10 +153,6 @@ configure_3proxy() {
     # 创建配置目录
     sudo mkdir -p "$config_dir"
     
-    # 生成随机密码
-    local user1_pass=$(openssl rand -base64 12 | tr -d '=+/')
-    local user2_pass=$(openssl rand -base64 12 | tr -d '=+/')
-    
     # 创建配置文件
     sudo tee "$config_file" > /dev/null <<EOF
 daemon
@@ -163,7 +163,7 @@ timeouts 1 5 30 60 180 1800 15 60
 log /var/log/3proxy.log
 logformat "- +_L%t.%. %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 auth strong
-users ${RANDOM_USER1}:CL:${user1_pass} ${RANDOM_USER2}:CL:${user2_pass}
+users ${RANDOM_USER1}:CL:${RANDOM_PASS1} ${RANDOM_USER2}:CL:${RANDOM_PASS2}
 allow ${RANDOM_USER1},${RANDOM_USER2}
 socks -p${RANDOM_PORT}
 EOF
@@ -179,10 +179,10 @@ EOF
     log_info "生成的用户凭证："
     echo "========================================"
     echo "用户名: $RANDOM_USER1"
-    echo "密码: $user1_pass"
+    echo "密码: $RANDOM_PASS1"
     echo "----------------------------------------"
     echo "用户名: $RANDOM_USER2" 
-    echo "密码: $user2_pass"
+    echo "密码: $RANDOM_PASS2"
     echo "========================================"
     echo
 }
@@ -305,9 +305,7 @@ verify_installation() {
     fi
     
     # 测试本地连接
-    local user1_pass=$(sudo grep "${RANDOM_USER1}" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
-    
-    if curl --socks5 "${RANDOM_USER1}:${user1_pass}@127.0.0.1:${RANDOM_PORT}" -s -o /dev/null -w "%{http_code}" http://httpbin.org/ip | grep -q "200"; then
+    if curl --socks5 "${RANDOM_USER1}:${RANDOM_PASS1}@127.0.0.1:${RANDOM_PORT}" -s -o /dev/null -w "%{http_code}" http://httpbin.org/ip | grep -q "200"; then
         log_success "本地连接测试成功"
     else
         log_warning "本地连接测试失败，但服务已启动"
@@ -329,13 +327,11 @@ verify_installation() {
     echo
     echo "用户凭证："
     echo "----------------------------------------"
-    local user1_pass=$(sudo grep "${RANDOM_USER1}" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
-    local user2_pass=$(sudo grep "${RANDOM_USER2}" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
     echo "用户名1: $RANDOM_USER1"
-    echo "密码1: $user1_pass"
+    echo "密码1: $RANDOM_PASS1"
     echo "----------------------------------------"
     echo "用户名2: $RANDOM_USER2"
-    echo "密码2: $user2_pass"
+    echo "密码2: $RANDOM_PASS2"
     echo "----------------------------------------"
     echo
     echo "管理命令："
