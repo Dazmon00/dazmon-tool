@@ -9,6 +9,10 @@ set -e  # 遇到错误立即退出
 # 生成随机端口 (10000-60000)
 RANDOM_PORT=$((RANDOM % 50001 + 10000))
 
+# 生成随机用户名 (10个字符，字母数字组合)
+RANDOM_USER1=$(openssl rand -base64 8 | tr -d '=+/' | head -c 10)
+RANDOM_USER2=$(openssl rand -base64 8 | tr -d '=+/' | head -c 10)
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -159,8 +163,8 @@ timeouts 1 5 30 60 180 1800 15 60
 log /var/log/3proxy.log
 logformat "- +_L%t.%. %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 auth strong
-users proxyuser:CL:${user1_pass} testuser:CL:${user2_pass}
-allow proxyuser,testuser
+users ${RANDOM_USER1}:CL:${user1_pass} ${RANDOM_USER2}:CL:${user2_pass}
+allow ${RANDOM_USER1},${RANDOM_USER2}
 socks -p${RANDOM_PORT}
 EOF
     
@@ -174,10 +178,10 @@ EOF
     echo
     log_info "生成的用户凭证："
     echo "========================================"
-    echo "用户名: proxyuser"
+    echo "用户名: $RANDOM_USER1"
     echo "密码: $user1_pass"
     echo "----------------------------------------"
-    echo "用户名: testuser" 
+    echo "用户名: $RANDOM_USER2" 
     echo "密码: $user2_pass"
     echo "========================================"
     echo
@@ -301,9 +305,9 @@ verify_installation() {
     fi
     
     # 测试本地连接
-    local user1_pass=$(sudo grep "proxyuser" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
+    local user1_pass=$(sudo grep "${RANDOM_USER1}" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
     
-    if curl --socks5 "proxyuser:${user1_pass}@127.0.0.1:${RANDOM_PORT}" -s -o /dev/null -w "%{http_code}" http://httpbin.org/ip | grep -q "200"; then
+    if curl --socks5 "${RANDOM_USER1}:${user1_pass}@127.0.0.1:${RANDOM_PORT}" -s -o /dev/null -w "%{http_code}" http://httpbin.org/ip | grep -q "200"; then
         log_success "本地连接测试成功"
     else
         log_warning "本地连接测试失败，但服务已启动"
@@ -323,6 +327,17 @@ verify_installation() {
     echo "认证: 用户名/密码"
     echo "----------------------------------------"
     echo
+    echo "用户凭证："
+    echo "----------------------------------------"
+    local user1_pass=$(sudo grep "${RANDOM_USER1}" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
+    local user2_pass=$(sudo grep "${RANDOM_USER2}" /usr/local/3proxy/conf/3proxy.cfg | cut -d: -f4)
+    echo "用户名1: $RANDOM_USER1"
+    echo "密码1: $user1_pass"
+    echo "----------------------------------------"
+    echo "用户名2: $RANDOM_USER2"
+    echo "密码2: $user2_pass"
+    echo "----------------------------------------"
+    echo
     echo "管理命令："
     echo "sudo systemctl status 3proxy    # 查看状态"
     echo "sudo systemctl restart 3proxy   # 重启服务"
@@ -331,6 +346,8 @@ verify_installation() {
     log_warning "⚠️  请确保云服务商安全组已开放${RANDOM_PORT}端口！"
     echo
     log_success "随机端口: $RANDOM_PORT"
+    log_success "随机用户名1: $RANDOM_USER1"
+    log_success "随机用户名2: $RANDOM_USER2"
 }
 
 # 主函数
